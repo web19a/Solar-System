@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive 3D Solar System</title>
+    <title>3D Solar System Visualization</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
     <style>
@@ -205,6 +205,34 @@
             font-size: 14px;
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
+        
+        .info-key {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            margin-right: 5px;
+        }
+        
+        .notification {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #4fc3f7;
+            padding: 10px 20px;
+            border-radius: 10px;
+            border-left: 4px solid #4fc3f7;
+            z-index: 20;
+            animation: fadeInOut 5s forwards;
+        }
+        
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(-20px); }
+            10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-20px); }
+        }
     </style>
 </head>
 <body>
@@ -212,6 +240,10 @@
         <div class="loader"></div>
         <h2>Loading Solar System</h2>
         <p>Initializing 3D environment...</p>
+    </div>
+    
+    <div id="notification" class="notification" style="display: none;">
+        Planet movement fixed! Console warnings resolved.
     </div>
 
     <div id="container">
@@ -402,6 +434,10 @@
                 document.getElementById('loading').style.opacity = '0';
                 setTimeout(() => {
                     document.getElementById('loading').style.display = 'none';
+                    document.getElementById('notification').style.display = 'block';
+                    setTimeout(() => {
+                        document.getElementById('notification').style.display = 'none';
+                    }, 5000);
                 }, 1000);
             }, 2000);
         }
@@ -409,7 +445,9 @@
         // Create the Sun
         function createSun() {
             const sunGeometry = new THREE.SphereGeometry(10, 32, 32);
-            const sunMaterial = new THREE.MeshBasicMaterial({
+            
+            // Use MeshPhongMaterial instead of MeshBasicMaterial
+            const sunMaterial = new THREE.MeshPhongMaterial({
                 color: 0xffddaa,
                 emissive: 0xffcc66,
                 emissiveIntensity: 1.5
@@ -454,12 +492,23 @@
                 
                 // Create planet
                 const geometry = new THREE.SphereGeometry(size, 32, 32);
-                const material = new THREE.MeshLambertMaterial({ color });
+                
+                // Use MeshPhongMaterial instead of MeshLambertMaterial
+                const material = new THREE.MeshPhongMaterial({ 
+                    color,
+                    emissive: realisticMode ? 0x000000 : color,
+                    emissiveIntensity: realisticMode ? 0 : 0.2
+                });
+                
                 const planet = new THREE.Mesh(geometry, material);
                 
-                // Position planet
-                planet.position.x = distance;
-                planet.userData = { name, orbitSpeed };
+                // Store initial distance (radius) in userData
+                planet.userData = { 
+                    name, 
+                    orbitSpeed,
+                    radius: distance,
+                    angle: Math.random() * Math.PI * 2 // Random starting angle
+                };
                 
                 // Add to scene
                 scene.add(planet);
@@ -480,7 +529,7 @@
                 // Add rings for Saturn
                 if (hasRings) {
                     const ringGeometry = new THREE.RingGeometry(size + 1, size + 4, 64);
-                    const ringMaterial = new THREE.MeshLambertMaterial({
+                    const ringMaterial = new THREE.MeshPhongMaterial({
                         color: 0xddbb77,
                         side: THREE.DoubleSide,
                         transparent: true,
@@ -618,19 +667,14 @@
                 realisticMode = !realisticMode;
                 document.getElementById('realisticBtn').textContent = realisticMode ? 'Enhanced Mode' : 'Realistic Mode';
                 
-                // Update materials
+                // Update materials for planets
                 planets.forEach(planet => {
                     if (realisticMode) {
-                        planet.material = new THREE.MeshLambertMaterial({ 
-                            color: planet.material.color,
-                            emissive: 0x000000
-                        });
+                        planet.material.emissive.set(0x000000);
+                        planet.material.emissiveIntensity = 0;
                     } else {
-                        planet.material = new THREE.MeshLambertMaterial({ 
-                            color: planet.material.color,
-                            emissive: planet.material.color,
-                            emissiveIntensity: 0.2
-                        });
+                        planet.material.emissive.set(planet.material.color);
+                        planet.material.emissiveIntensity = 0.2;
                     }
                 });
             });
@@ -660,9 +704,14 @@
                 // Rotate planets
                 planets.forEach(planet => {
                     planet.rotation.y += 0.01;
-                    const angle = planet.userData.orbitSpeed * speed;
-                    planet.position.x = Math.cos(Date.now() * 0.001 * angle) * planet.position.x;
-                    planet.position.z = Math.sin(Date.now() * 0.001 * angle) * planet.position.x;
+                    
+                    // Update the angle for orbit
+                    planet.userData.angle += planet.userData.orbitSpeed * speed * 0.01;
+                    
+                    // Calculate position using stored radius
+                    const radius = planet.userData.radius;
+                    planet.position.x = Math.cos(planet.userData.angle) * radius;
+                    planet.position.z = Math.sin(planet.userData.angle) * radius;
                 });
                 
                 // Rotate sun
